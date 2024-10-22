@@ -69,9 +69,9 @@ assembleSqliteMetadataLookupPlugin (void)
     p->databaseConnectionOpen = duckdbDatabaseConnectionOpen; 
     p->databaseConnectionClose = duckdbDatabaseConnectionClose; 
     p->shutdownMetadataLookupPlugin = duckdbShutdownMetadataLookupPlugin; 
-    p->isInitialized = duckdbIsInitialized; // TODO: adapt function
-    p->catalogTableExists = duckdbCatalogTableExists; // TODO: adapt function
-    p->catalogViewExists = duckdbCatalogViewExists; // TODO: adapt function
+    p->isInitialized = duckdbIsInitialized; 
+    p->catalogTableExists = duckdbCatalogTableExists; 
+    p->catalogViewExists = duckdbCatalogViewExists;
     p->getAttributes = duckdbGetAttributes; // TODO: adapt function
     p->getAttributeNames = duckdbGetAttributeNames; // TODO: adapt function
     p->isAgg = duckdbIsAgg; // TODO: adapt function
@@ -136,9 +136,9 @@ duckdbDatabaseConnectionOpen (void)
     {
           HANDLE_ERROR_MSG(rc, SQLITE_OK, "Can not open database <%s>", dbfile); // TODO: adapt
           sqlite3_close(plugin->conn); // TODO: adapt function
-          return EXIT_FAILURE;
+          return EXIT_FAILURE; // TODO: adapt function
     }
-    return EXIT_SUCCESS;
+    return EXIT_SUCCESS; // TODO: adapt function
 }
 
 int
@@ -150,5 +150,37 @@ duckdbDatabaseConnectionClose()
     HANDLE_ERROR_MSG(rc, SQLITE_OK, "Can not close database"); // TODO: adapt
 
     return EXIT_SUCCESS;
+}
+
+boolean
+duckdbIsInitialized (void)
+{
+    if (plugin && plugin->initialized)
+    {
+        if (plugin->conn == NULL)
+        {
+            if (duckdbDatabaseConnectionOpen() != EXIT_SUCCESS) // TODO: adapt function
+                return FALSE;
+        }
+
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
+boolean
+duckdbCatalogTableExists (char * tableName)
+{
+    sqlite3 *c = plugin->conn; // TODO: adapt function
+    boolean res = (sqlite3_table_column_metadata(c,NULL,tableName,strdup("rowid"),NULL,NULL,NULL,NULL, NULL) == SQLITE_OK); // TODO: adapt function
+
+    return res;//TODO
+}
+
+boolean
+duckdbCatalogViewExists (char * viewName)
+{
+    return FALSE;//TODO
 }
 
