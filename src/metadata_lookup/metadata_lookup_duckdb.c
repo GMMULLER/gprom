@@ -20,7 +20,7 @@
 // Mem context
 #define CONTEXT_NAME "DuckDBMemContext"
 
-#define QUERY_TABLE_COL_COUNT "DESCRIBE %s" // TODO: Account for the differences in output compared with PRAGMA
+#define QUERY_TABLE_COL_COUNT "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '%s';"
 #define QUERY_TABLE_ATTR_MIN_MAX "SELECT %s FROM %s"
 
 // Only define real plugin structure and methods if duckdb is present
@@ -31,7 +31,8 @@ typedef struct DuckDBPlugin
 {
     MetadataLookupPlugin plugin;
     boolean initialized;
-    sqlite3 *conn; // TODO: replace with duck connection type
+    duckdb_connection conn; 
+    duckdb_database db;
 } DuckDBPlugin; 
 
 // global vars
@@ -131,23 +132,31 @@ duckdbDatabaseConnectionOpen (void)
     if (dbfile == NULL)
         FATAL_LOG("no database file given (<connection.db> parameter)");
 
-    rc = sqlite3_open(dbfile, &(plugin->conn)); // TODO: adapt function
-    if(rc != SQLITE_OK) // TODO: adapt
+    rc = duckdb_open(dbfile, &(plugin->db));
+    if(rc != DuckDBSuccess)
     {
-          HANDLE_ERROR_MSG(rc, SQLITE_OK, "Can not open database <%s>", dbfile); // TODO: adapt
-          sqlite3_close(plugin->conn); // TODO: adapt function
-          return EXIT_FAILURE; // TODO: adapt function
+          HANDLE_ERROR_MSG(rc, DuckDBSuccess, "Can not open database <%s>", dbfile);
+          duckdb_close(&(plugin->db)); 
+          return EXIT_FAILURE;
     }
-    return EXIT_SUCCESS; // TODO: adapt function
+
+    rc = duckdb_connect(plugin->db, &(plugin->conn));
+    if(rc != DuckDBSuccess)
+    {
+        HANDLE_ERROR_MSG(rc, DuckDBSuccess, "Can not connect to database <%s>", dbfile);
+        duckdb_disconnect(&(plugin->conn)); 
+        return EXIT_FAILURE;
+    }
+
+    return EXIT_SUCCESS;
 }
 
 int
 duckdbDatabaseConnectionClose()
 {
-    int rc;
-    rc = sqlite3_close(plugin->conn); // TODO: adapt
 
-    HANDLE_ERROR_MSG(rc, SQLITE_OK, "Can not close database"); // TODO: adapt
+    duckdb_disconnect(&(plugin->conn)); 
+    duckdb_close(&(plugin->db)); 
 
     return EXIT_SUCCESS;
 }
@@ -159,7 +168,7 @@ duckdbIsInitialized (void)
     {
         if (plugin->conn == NULL)
         {
-            if (duckdbDatabaseConnectionOpen() != EXIT_SUCCESS) // TODO: adapt function
+            if (duckdbDatabaseConnectionOpen() != EXIT_SUCCESS)
                 return FALSE;
         }
 
@@ -172,10 +181,27 @@ duckdbIsInitialized (void)
 boolean
 duckdbCatalogTableExists (char * tableName)
 {
-    sqlite3 *c = plugin->conn; // TODO: adapt function
-    boolean res = (sqlite3_table_column_metadata(c,NULL,tableName,strdup("rowid"),NULL,NULL,NULL,NULL, NULL) == SQLITE_OK); // TODO: adapt function
 
-    return res;//TODO
+    duckdb_result result;
+    duckdb_connection c = plugin->conn;
+
+    char query[256];
+    snprintf(query, sizeof(query),
+                "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = '%s';", table_name);
+
+    int rc;
+    rc = duckdb_query(c, query, &result);
+
+    if (rc != DuckDBSuccess) {
+        HANDLE_ERROR_MSG(rc, DuckDBSuccess, "Failed to execute query to check duckdbCatalogTableExists.");
+        return EXIT_FAILURE;
+    }
+
+    int table_count = duckdb_value_int32(&result, 0, 0);
+
+    duckdb_destroy_result(&result);
+
+    return table_count > 0;
 }
 
 boolean
@@ -184,35 +210,42 @@ duckdbCatalogViewExists (char * viewName)
     return FALSE;//TODO
 }
 
-List *
-duckdbGetAttributes (char *tableName)
-{
-    sqlite3_stmt *rs; // TODO: adapt function
+List * 
+duckdbGetAttributes(char *tableName, duckdb_connection conn) {
+    duckdb_result result;
     StringInfo q;
-    List *result = NIL;
-    int rc;
+    List *resultList = NIL;
 
     q = makeStringInfo();
     appendStringInfo(q, QUERY_TABLE_COL_COUNT, tableName);
-    rs = runQuery(q->data);
 
-    while((rc = sqlite3_step(rs)) == SQLITE_ROW) // TODO: adapt function
-    {
-        const unsigned char *colName = sqlite3_column_text(rs,1); // TODO: adapt function
-        const unsigned char *dt = sqlite3_column_text(rs,2); // TODO: adapt function
-        DataType ourDT = stringToDT((char *) dt);
+    int rc = duckdb_query(conn, q->data, &result)
+
+    // Execute the query
+    if (rc != DuckDBSuccess) {
+        HANDLE_ERROR_MSG(rc, DuckDBSuccess, "error getting attributes of table <%s>", tableName);
+    }
+
+    // Iterate over the result set
+    for (idx_t row = 0; row < duckdb_row_count(&result); row++) {
+        const char *colName = duckdb_value_varchar(&result, row, 0);
+        const char *dt = duckdb_value_varchar(&result, row, 1);
+        
+        DataType ourDT = stringToDT((char *)dt);
 
         AttributeDef *a = createAttributeDef(
             strToUpper(strdup((char *) colName)),
             ourDT);
-        result = appendToTailOfList(result, a);
+        resultList = appendToTailOfList(resultList, a);
+
+        duckdb_free((void *)colName);
+        duckdb_free((void *)dt);
     }
 
-    HANDLE_ERROR_MSG(rc, SQLITE_DONE, "error getting attributes of table <%s>", tableName); // TODO: adapt function
+    duckdb_destroy_result(&result);
+    DEBUG_NODE_LOG("columns are: ", resultList);
 
-    DEBUG_NODE_LOG("columns are: ", result);
-
-    return result;
+    return resultList;
 }
 
 List *
