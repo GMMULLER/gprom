@@ -40,24 +40,23 @@ static DuckDBPlugin *plugin = NULL;
 static MemContext *memContext = NULL;
 
 // functions
-static sqlite3_stmt *runQuery (char *q); // TODO: adapt the type for duckdb (sqlite3_stmt). Modify runQuery
-static DataType stringToDT (char *dataType); // TODO: adapt function
-static char *duckdbGetConnectionDescription (void); // TODO: adapt function
-static void initCache(CatalogCache *c); // TODO: adapt function
+static duckdb_result runQuery (char *q);
+static DataType stringToDT (char *dataType);
+static char *duckdbGetConnectionDescription (void);
+static void initCache(CatalogCache *c);
 
 #define HANDLE_ERROR_MSG(_rc,_expected,_message, ...) \
     do { \
         if (_rc != _expected) \
         { \
-            StringInfo _newmes = makeStringInfo(); \ // TODO: adapt function
+            StringInfo _newmes = makeStringInfo(); \ 
             appendStringInfo(_newmes, _message, ##__VA_ARGS__); \
             StringInfo _errMes = makeStringInfo(); \
-            appendStringInfo(_errMes, strdup((char *) sqlite3_errmsg(plugin->conn))); \ // TODO: adapt function
+            appendStringInfo(_errMes, strdup((char *) sqlite3_errmsg(plugin->conn))); \ 
             FATAL_LOG("error (%s)\n%u\n\n%s", _errMes, _rc, _newmes->data); \
         } \
     } while(0)
 
-// TODO: adapt functions but not all
 MetadataLookupPlugin *
 assembleSqliteMetadataLookupPlugin (void)
 {
@@ -211,7 +210,7 @@ duckdbCatalogViewExists (char * viewName)
 }
 
 List * 
-duckdbGetAttributes(char *tableName, duckdb_connection conn) {
+duckdbGetAttributes(char *tableName) {
     duckdb_result result;
     StringInfo q;
     List *resultList = NIL;
@@ -219,7 +218,7 @@ duckdbGetAttributes(char *tableName, duckdb_connection conn) {
     q = makeStringInfo();
     appendStringInfo(q, QUERY_TABLE_COL_COUNT, tableName);
 
-    int rc = duckdb_query(conn, q->data, &result)
+    int rc = duckdb_query(plugin->conn, q->data, &result)
 
     // Execute the query
     if (rc != DuckDBSuccess) {
@@ -348,10 +347,9 @@ duckdbGetCostEstimation(char *query)
     return -1;
 }
 
-List *
-duckdbGetKeyInformation(char *tableName)
-{
-    sqlite3_stmt *rs; // TODO: adapt function
+List* 
+duckdbGetKeyInformation(char *tableName) {
+    duckdb_result result;
     StringInfo q;
     Set *key = STRSET();
     List *keys = NIL;
@@ -359,27 +357,32 @@ duckdbGetKeyInformation(char *tableName)
 
     q = makeStringInfo();
     appendStringInfo(q, QUERY_TABLE_COL_COUNT, tableName);
-    rs = runQuery(q->data);
+    rc = duckdb_query(plugin->conn, q->data, &result)
 
-    while((rc = sqlite3_step(rs)) == SQLITE_ROW) // TODO: adapt function
-    {
-        boolean pk = sqlite3_column_int(rs,5) > 0; // TODO: adapt function
-        const unsigned char *colname = sqlite3_column_text(rs,1); // TODO: adapt function
-
-        if(pk)
-        {
-            addToSet(key, strToUpper(strdup((char *) colname)));
-        }
+    if (rc != DuckDBSuccess) {
+        HANDLE_ERROR_MSG(rc, DuckDBSuccess, "Error getting primary key information for table <%s>", tableName); 
+        return NULL; 
     }
 
-    HANDLE_ERROR_MSG(rc, SQLITE_DONE, "error getting attributes of table <%s>", tableName); // TODO: adapt function
+    for (idx_t row = 0; row < duckdb_row_count(&result); row++) {
+        const char *colname = duckdb_value_varchar(&result, row, 0);
+        
+        addToSet(key, strToUpper(strdup((char *) colname)));
 
-    DEBUG_LOG("Key for %s are: %s", tableName, beatify(nodeToString(key)));
+        duckdb_free((void *)colname);
+    }
 
-    if(!EMPTY_SET(key))
-    {
+    if (duckdb_row_count(&result) == 0) {
+        HANDLE_ERROR_MSG(0, 1, "No primary key information found for table <%s>", tableName); 
+    } else {
+        DEBUG_LOG("Key for %s are: %s", tableName, beatify(nodeToString(key)));
+    }
+
+    if (!EMPTY_SET(key)) {
         keys = singleton(key);
     }
+
+    duckdb_destroy_result(&result);
 
     return keys;
 }
@@ -433,14 +436,13 @@ duckdbBackendDatatypeToSQL (DataType dt)
     return "TEXT";
 }
 
-HashMap *
-duckdbGetMinAndMax(char* tableName, char* colName)
-{
+HashMap 
+*duckdbGetMinAndMax(char* tableName, char* colName) {
     HashMap *result_map = NEW_MAP(Constant, HashMap);
-    sqlite3_stmt *rs; // TODO: adapt function
+    duckdb_result rs;
     StringInfo q;
     StringInfo colMinMax;
-    List *attr = sqliteGetAttributes(tableName);
+    List *attr = duckdbGetAttributes(tableName);
     List *aNames = getAttrDefNames(attr);
     List *aDTs = getAttrDataTypes(attr);
     int rc;
@@ -448,30 +450,31 @@ duckdbGetMinAndMax(char* tableName, char* colName)
     q = makeStringInfo();
     colMinMax = makeStringInfo();
 
-    // calculate min and max for each attribute
-    FOREACH(char,a,aNames)
-    {
+    // Construct the min and max query for each attribute
+    FOREACH(char, a, aNames) {
         appendStringInfo(colMinMax, "min(%s) AS min_%s, max(%s) AS max_%s", a, a, a, a);
         appendStringInfo(colMinMax, "%s", FOREACH_HAS_MORE(a) ? ", " : "");
     }
 
     appendStringInfo(q, QUERY_TABLE_ATTR_MIN_MAX, colMinMax->data, tableName);
-    rs = runQuery(q->data);
 
-    while((rc = sqlite3_step(rs)) == SQLITE_ROW) // TODO: adapt function
-    {
-        int pos = 0;
-        FORBOTH_LC(ac, dtc, aNames, aDTs)
-        {
-            char *aname = LC_STRING_VAL(ac);
-            DataType dt = (DataType) LC_INT_VAL(dtc);
-            HashMap *minmax = NEW_MAP(Constant,Constant);
-            const unsigned char *minVal = sqlite3_column_text(rs,pos++); // TODO: adapt function
-            const unsigned char *maxVal = sqlite3_column_text(rs,pos++); // TODO: adapt function
-            Constant *min, *max;
+    rc = duckdb_query(plugin->conn, q->data, &rs)
 
-            switch(dt)
-            {
+    if (rc != DuckDBSuccess) {
+        HANDLE_ERROR_MSG(rc, DuckDBSuccess, "Error executing query to get min and max values for table <%s>", tableName);
+        return NULL; 
+    }
+
+    // Iterate over the result set
+    for (idx_t pos = 0, attr_idx = 0; attr_idx < list_length(aNames); ++attr_idx) {
+        char *aname = (char *) list_nth(aNames, attr_idx);
+        DataType dt = (DataType) list_nth_int(aDTs, attr_idx);
+        HashMap *minmax = NEW_MAP(Constant, Constant);
+        const char *minVal = duckdb_value_varchar(&rs, 0, pos++);  
+        const char *maxVal = duckdb_value_varchar(&rs, 0, pos++);  
+        Constant *min, *max;
+
+        switch(dt) {
             case DT_INT:
                 min = createConstInt(atoi((char *) minVal));
                 max = createConstInt(atoi((char *) maxVal));
@@ -485,20 +488,24 @@ duckdbGetMinAndMax(char* tableName, char* colName)
                 max = createConstFloat(atof((char *) maxVal));
                 break;
             case DT_STRING:
-                min = createConstString((char *) minVal);
-                max = createConstString((char *) maxVal);
+                min = createConstString(strdup((char *) minVal));
+                max = createConstString(strdup((char *) maxVal));
                 break;
             default:
-                THROW(SEVERITY_RECOVERABLE, "received unkown DT from sqlite: %s", DataTypeToString(dt));
-                break;
-            }
-            MAP_ADD_STRING_KEY(minmax, MIN_KEY, min);
-            MAP_ADD_STRING_KEY(minmax, MAX_KEY, max);
-            MAP_ADD_STRING_KEY(result_map, aname, minmax);
+                THROW(SEVERITY_RECOVERABLE, "Received unknown data type from DuckDB: %s", DataTypeToString(dt));
+                duckdb_destroy_result(&rs);
+                return NULL;
         }
+
+        MAP_ADD_STRING_KEY(minmax, MIN_KEY, min);
+        MAP_ADD_STRING_KEY(minmax, MAX_KEY, max);
+        MAP_ADD_STRING_KEY(result_map, aname, minmax);
+
+        duckdb_free((void *)minVal);
+        duckdb_free((void *)maxVal);
     }
 
-    HANDLE_ERROR_MSG(rc, SQLITE_DONE, "error getting min and max values of attributes for table <%s>", tableName); // TODO: adapt function
+    duckdb_destroy_result(&rs);
 
     DEBUG_NODE_BEATIFY_LOG("min maxes", MAP_GET_STRING(result_map, colName));
 
@@ -519,91 +526,87 @@ duckdbExecuteAsTransactionAndGetXID (List *statements, IsolationLevel isoLevel)
     return NULL;
 }
 
-Relation *
-duckdbExecuteQuery(char *query)
-{
+Relation *duckdbExecuteQuery(char *query) {
     Relation *r = makeNode(Relation);
-    sqlite3_stmt *rs = runQuery(query); // TODO: adapt function
-    int numFields = sqlite3_column_count(rs); // TODO: adapt function
-    int rc = SQLITE_OK; // TODO: adapt function
+    duckdb_result rs;
+    int rc;
 
-    // set schema
+    rc = duckdb_query(plugin->conn, query, &rs)
+    
+    if (rc != DuckDBSuccess) {
+        HANDLE_ERROR_MSG(rc,DuckDBSuccess, "Failed to execute query <%s>", query);
+        return NULL;
+    }
+
+    int numFields = duckdb_column_count(&rs);
+
     r->schema = NIL;
-    for(int i = 0; i < numFields; i++)
-    {
-        const char *name = sqlite3_column_name(rs, i); // TODO: adapt function
+    for (int i = 0; i < numFields; i++) {
+        const char *name = duckdb_column_name(&rs, i);
         r->schema = appendToTailOfList(r->schema, strdup((char *) name));
     }
 
-    // read rows
+    // Read rows
     r->tuples = makeVector(VECTOR_NODE, T_Vector);
-    while((rc = sqlite3_step(rs)) == SQLITE_ROW) // TODO: adapt function
-    {
+    for (idx_t row = 0; row < duckdb_row_count(&rs); row++) {
         Vector *tuple = makeVector(VECTOR_STRING, -1);
-        for (int j = 0; j < numFields; j++)
-        {
-            if (sqlite3_column_type(rs,j) == SQLITE_NULL) // TODO: adapt function
-            {
+        for (int j = 0; j < numFields; j++) {
+            if (duckdb_value_is_null(&rs, row, j)) {
                 vecAppendString(tuple, strdup("NULL"));
-            }
-            else
-            {
-                const unsigned char *val = sqlite3_column_text(rs,j); // TODO: adapt function
+            } else {
+                const char *val = duckdb_value_varchar(&rs, row, j);
                 vecAppendString(tuple, strdup((char *) val));
+                duckdb_free((void *)val); 
             }
         }
         VEC_ADD_NODE(r->tuples, tuple);
         DEBUG_NODE_LOG("read tuple <%s>", tuple);
     }
 
-    HANDLE_ERROR_MSG(rc,SQLITE_DONE, "failed to execute query <%s>", query);
-
-    rc = sqlite3_finalize(rs); // TODO: adapt function
-    HANDLE_ERROR_MSG(rc,SQLITE_OK, "failed to finalize query <%s>", query);
+    duckdb_destroy_result(&rs);
 
     return r;
 }
 
-void
-duckdbExecuteQueryIgnoreResults(char *query)
-{
-    sqlite3_stmt *rs = runQuery(query); // TODO: adapt function
-    int rc = SQLITE_OK; // TODO: adapt function
-
-    while((rc = sqlite3_step(rs)) == SQLITE_ROW) // TODO: adapt function
-        ;
-
-    HANDLE_ERROR_MSG(rc,SQLITE_DONE, "failed to execute query <%s>", query); // TODO: adapt function
-
-    rc = sqlite3_finalize(rs); // TODO: adapt function
-    HANDLE_ERROR_MSG(rc,SQLITE_OK, "failed to finalize query <%s>", query); // TODO: adapt function
-}
-
-static sqlite3_stmt * // TODO: adapt function
-runQuery (char *q)
-{ 
-    sqlite3 *conn = plugin->conn; // TODO: adapt function
-    sqlite3_stmt *stmt; // TODO: adapt function
+void 
+duckdbExecuteQueryIgnoreResults(char *query) {
+    duckdb_result rs;
     int rc;
 
+    rc = duckdb_query(plugin->conn, query, &rs)
+
+    if (rc != DuckDBSuccess) {
+        HANDLE_ERROR_MSG(rc,DuckDBSuccess, "Failed to execute query <%s>", query);
+        return;
+    }
+
+    duckdb_destroy_result(&rs);
+}
+
+static duckdb_result 
+runQuery(char *q) {
+    duckdb_result result;
+    duckdb_state rc;
+
     DEBUG_LOG("run query:\n<%s>", q);
-    rc = sqlite3_prepare(conn, strdup(q), -1, &stmt, NULL); // TODO: adapt function
-//    HANDLE_ERROR_MSG(rc, SQLITE_OK, "failed to prepare query <%s>", q);
 
-   if (rc != SQLITE_OK) // TODO: adapt function
-   {
-       StringInfo _newmes = makeStringInfo();
-       appendStringInfo(_newmes, "failed to prepare query <%s>", q);
-       StringInfo _errMes = makeStringInfo();
-       appendStringInfo(_errMes, strdup((char *) sqlite3_errmsg(plugin->conn))); // TODO: adapt function
-       FATAL_LOG("error (%s)\n%u\n\n%s", _errMes->data, rc, _newmes->data);
-   }
+    rc = duckdb_query(plugin->conn, q, &result);
 
-    return stmt;
+    if (rc != DuckDBSuccess) {
+        StringInfo _newmes = makeStringInfo();
+        appendStringInfo(_newmes, "failed to prepare query <%s>", q);
+        StringInfo _errMes = makeStringInfo();
+        appendStringInfo(_errMes, duckdb_result_error(&result)); // DuckDB provides error message
+        FATAL_LOG("error (%s)\n%u\n\n%s", _errMes->data, rc, _newmes->data);
+        
+        duckdb_destroy_result(&result);
+    }
+
+    return result;
 }
 
 static DataType
-stringToDT (char *dataType) // TODO: double check if data types are the same
+stringToDT (char *dataType)
 {
    DEBUG_LOG("data type %s", dataType);
    char *lowerDT = strToLower(dataType);

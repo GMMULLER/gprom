@@ -32,11 +32,11 @@ extern DataType duckdbBackendSQLTypeToDT (char *sqlType);
 extern char * duckdbBackendDatatypeToSQL (DataType dt);
 extern HashMap *duckdbGetMinAndMax(char* tableName, char* colName);
 
-extern Relation *sqliteExecuteQuery(char *query); // TODO: adapt
-extern void sqliteExecuteQueryIgnoreResults(char *query); // TODO: adapt
-extern void sqliteGetTransactionSQLAndSCNs (char *xid, List **scns, List **sqls, 
-        List **sqlBinds, IsolationLevel *iso, Constant *commitScn); // TODO: adapt
-extern Node *sqliteExecuteAsTransactionAndGetXID (List *statements, IsolationLevel isoLevel); // TODO: adapt
+extern Relation *duckdbExecuteQuery(char *query); 
+extern void duckdbExecuteQueryIgnoreResults(char *query); 
+extern void duckdbGetTransactionSQLAndSCNs (char *xid, List **scns, List **sqls, 
+        List **sqlBinds, IsolationLevel *iso, Constant *commitScn); 
+extern Node *duckdbExecuteAsTransactionAndGetXID (List *statements, IsolationLevel isoLevel); 
 
 
 #endif /* INCLUDE_METADATA_LOOKUP_METADATA_LOOKUP_DUCKDB_H_ */
