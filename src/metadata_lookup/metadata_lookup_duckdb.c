@@ -40,25 +40,13 @@ static DuckDBPlugin *plugin = NULL;
 static MemContext *memContext = NULL;
 
 // functions
-static duckdb_result runQuery (char *q);
+// static duckdb_result runQuery (char *q);
 static DataType stringToDT (char *dataType);
 static char *duckdbGetConnectionDescription (void);
 static void initCache(CatalogCache *c);
 
-#define HANDLE_ERROR_MSG(_rc,_expected,_message, ...) \
-    do { \
-        if (_rc != _expected) \
-        { \
-            StringInfo _newmes = makeStringInfo(); \ 
-            appendStringInfo(_newmes, _message, ##__VA_ARGS__); \
-            StringInfo _errMes = makeStringInfo(); \
-            appendStringInfo(_errMes, strdup((char *) sqlite3_errmsg(plugin->conn))); \ 
-            FATAL_LOG("error (%s)\n%u\n\n%s", _errMes, _rc, _newmes->data); \
-        } \
-    } while(0)
-
 MetadataLookupPlugin *
-assembleSqliteMetadataLookupPlugin (void)
+assembleDuckDBMetadataLookupPlugin (void)
 {
     plugin = NEW(DuckDBPlugin);
     MetadataLookupPlugin *p = (MetadataLookupPlugin *) plugin;
@@ -134,7 +122,7 @@ duckdbDatabaseConnectionOpen (void)
     rc = duckdb_open(dbfile, &(plugin->db));
     if(rc != DuckDBSuccess)
     {
-          HANDLE_ERROR_MSG(rc, DuckDBSuccess, "Can not open database <%s>", dbfile);
+          fprintf(stderr, "Can not open database <%s>", dbfile);
           duckdb_close(&(plugin->db)); 
           return EXIT_FAILURE;
     }
@@ -142,7 +130,7 @@ duckdbDatabaseConnectionOpen (void)
     rc = duckdb_connect(plugin->db, &(plugin->conn));
     if(rc != DuckDBSuccess)
     {
-        HANDLE_ERROR_MSG(rc, DuckDBSuccess, "Can not connect to database <%s>", dbfile);
+        fprintf(stderr, "Can not connect to database <%s>", dbfile);
         duckdb_disconnect(&(plugin->conn)); 
         return EXIT_FAILURE;
     }
@@ -186,13 +174,13 @@ duckdbCatalogTableExists (char * tableName)
 
     char query[256];
     snprintf(query, sizeof(query),
-                "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = '%s';", table_name);
+                "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = '%s';", tableName);
 
     int rc;
     rc = duckdb_query(c, query, &result);
 
     if (rc != DuckDBSuccess) {
-        HANDLE_ERROR_MSG(rc, DuckDBSuccess, "Failed to execute query to check duckdbCatalogTableExists.");
+        fprintf(stderr, "Failed to execute query to check duckdbCatalogTableExists.");
         return EXIT_FAILURE;
     }
 
@@ -218,11 +206,11 @@ duckdbGetAttributes(char *tableName) {
     q = makeStringInfo();
     appendStringInfo(q, QUERY_TABLE_COL_COUNT, tableName);
 
-    int rc = duckdb_query(plugin->conn, q->data, &result)
+    int rc = duckdb_query(plugin->conn, q->data, &result);
 
     // Execute the query
     if (rc != DuckDBSuccess) {
-        HANDLE_ERROR_MSG(rc, DuckDBSuccess, "error getting attributes of table <%s>", tableName);
+        fprintf(stderr, "error getting attributes of table <%s>", tableName);
     }
 
     // Iterate over the result set
@@ -357,10 +345,10 @@ duckdbGetKeyInformation(char *tableName) {
 
     q = makeStringInfo();
     appendStringInfo(q, QUERY_TABLE_COL_COUNT, tableName);
-    rc = duckdb_query(plugin->conn, q->data, &result)
+    rc = duckdb_query(plugin->conn, q->data, &result);
 
     if (rc != DuckDBSuccess) {
-        HANDLE_ERROR_MSG(rc, DuckDBSuccess, "Error getting primary key information for table <%s>", tableName); 
+        fprintf(stderr, "Error getting primary key information for table <%s>", tableName);
         return NULL; 
     }
 
@@ -373,7 +361,7 @@ duckdbGetKeyInformation(char *tableName) {
     }
 
     if (duckdb_row_count(&result) == 0) {
-        HANDLE_ERROR_MSG(0, 1, "No primary key information found for table <%s>", tableName); 
+        fprintf(stderr, "No primary key information found for table <%s>", tableName);
     } else {
         DEBUG_LOG("Key for %s are: %s", tableName, beatify(nodeToString(key)));
     }
@@ -458,17 +446,17 @@ HashMap
 
     appendStringInfo(q, QUERY_TABLE_ATTR_MIN_MAX, colMinMax->data, tableName);
 
-    rc = duckdb_query(plugin->conn, q->data, &rs)
+    rc = duckdb_query(plugin->conn, q->data, &rs);
 
     if (rc != DuckDBSuccess) {
-        HANDLE_ERROR_MSG(rc, DuckDBSuccess, "Error executing query to get min and max values for table <%s>", tableName);
+        fprintf(stderr, "Error executing query to get min and max values for table <%s>", tableName);
         return NULL; 
     }
 
     // Iterate over the result set
-    for (idx_t pos = 0, attr_idx = 0; attr_idx < list_length(aNames); ++attr_idx) {
-        char *aname = (char *) list_nth(aNames, attr_idx);
-        DataType dt = (DataType) list_nth_int(aDTs, attr_idx);
+    for (idx_t pos = 0, attr_idx = 0; attr_idx < getListLength(aNames); ++attr_idx) {
+        char *aname = getNthOfListP(aNames, attr_idx);
+        DataType dt = (DataType) getNthOfListInt(aDTs, attr_idx);
         HashMap *minmax = NEW_MAP(Constant, Constant);
         const char *minVal = duckdb_value_varchar(&rs, 0, pos++);  
         const char *maxVal = duckdb_value_varchar(&rs, 0, pos++);  
@@ -531,10 +519,10 @@ Relation *duckdbExecuteQuery(char *query) {
     duckdb_result rs;
     int rc;
 
-    rc = duckdb_query(plugin->conn, query, &rs)
+    rc = duckdb_query(plugin->conn, query, &rs);
     
     if (rc != DuckDBSuccess) {
-        HANDLE_ERROR_MSG(rc,DuckDBSuccess, "Failed to execute query <%s>", query);
+        fprintf(stderr, "Failed to execute query <%s>", query);
         return NULL;
     }
 
@@ -573,37 +561,37 @@ duckdbExecuteQueryIgnoreResults(char *query) {
     duckdb_result rs;
     int rc;
 
-    rc = duckdb_query(plugin->conn, query, &rs)
+    rc = duckdb_query(plugin->conn, query, &rs);
 
     if (rc != DuckDBSuccess) {
-        HANDLE_ERROR_MSG(rc,DuckDBSuccess, "Failed to execute query <%s>", query);
+        fprintf(stderr, "Failed to execute query <%s>", query);
         return;
     }
 
     duckdb_destroy_result(&rs);
 }
 
-static duckdb_result 
-runQuery(char *q) {
-    duckdb_result result;
-    duckdb_state rc;
+// static duckdb_result 
+// runQuery(char *q) {
+//     duckdb_result result;
+//     duckdb_state rc;
 
-    DEBUG_LOG("run query:\n<%s>", q);
+//     DEBUG_LOG("run query:\n<%s>", q);
 
-    rc = duckdb_query(plugin->conn, q, &result);
+//     rc = duckdb_query(plugin->conn, q, &result);
 
-    if (rc != DuckDBSuccess) {
-        StringInfo _newmes = makeStringInfo();
-        appendStringInfo(_newmes, "failed to prepare query <%s>", q);
-        StringInfo _errMes = makeStringInfo();
-        appendStringInfo(_errMes, duckdb_result_error(&result)); // DuckDB provides error message
-        FATAL_LOG("error (%s)\n%u\n\n%s", _errMes->data, rc, _newmes->data);
+//     if (rc != DuckDBSuccess) {
+//         StringInfo _newmes = makeStringInfo();
+//         appendStringInfo(_newmes, "failed to prepare query <%s>", q);
+//         StringInfo _errMes = makeStringInfo();
+//         appendStringInfo(_errMes, duckdb_result_error(&result)); // DuckDB provides error message
+//         FATAL_LOG("error (%s)\n%u\n\n%s", _errMes->data, rc, _newmes->data);
         
-        duckdb_destroy_result(&result);
-    }
+//         duckdb_destroy_result(&result);
+//     }
 
-    return result;
-}
+//     return result;
+// }
 
 static DataType
 stringToDT (char *dataType)
