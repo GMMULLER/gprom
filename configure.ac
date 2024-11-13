@@ -1,3 +1,4 @@
+AC_LANG([C])
 ################################################################################
 # DEFINTIONS OF HELPER FUNCTIONS
 # Check whether we compile 32 or 64 bit code
@@ -349,8 +350,6 @@ AC_DEFUN([AC_DUCKDB_ALL_CHECKS],
     	AC_MSG_ERROR([missing libduckdb library - if you want to compile without DuckDB backend support use --disable-duckdb])
 	])
 ])
-AC_CHECK_HEADER([duckdb.h], [],
-                [AC_MSG_ERROR([missing libduckdb header file])])
 # cplex library location
 AC_DEFUN([AC_CPLEX_LOCATION],
 [
