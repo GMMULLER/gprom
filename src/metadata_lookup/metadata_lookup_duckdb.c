@@ -174,7 +174,7 @@ duckdbCatalogTableExists (char * tableName)
 
     char query[256];
     snprintf(query, sizeof(query),
-                "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = '%s';", tableName);
+                "SELECT COUNT(*) FROM information_schema.tables WHERE table_name ILIKE '%s';", tableName); // ILIKE for case-insensitive LIKE
 
     int rc;
     rc = duckdb_query(c, query, &result);

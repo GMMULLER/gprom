@@ -179,10 +179,15 @@ assembleDuckDBPlugin(void)
 {
     SqlserializerPlugin *p = NEW(SqlserializerPlugin);
 
-    p->type = SQLSERIALIZER_PLUGIN_DUCKDB;
-    p->serializeOperatorModel = serializeOperatorModelDuckDB;
-    p->serializeQuery = serializeQueryDuckDB;
-    p->quoteIdentifier = quoteIdentifierDuckDB;
+    // p->type = SQLSERIALIZER_PLUGIN_DUCKDB;
+    // p->serializeOperatorModel = serializeOperatorModelDuckDB;
+    // p->serializeQuery = serializeQueryDuckDB;
+    // p->quoteIdentifier = quoteIdentifierDuckDB;
+
+    p->type = SQLSERIALIZER_PLUGIN_SQLITE;
+    p->serializeOperatorModel = serializeOperatorModelSQLite;
+    p->serializeQuery = serializeQuerySQLite;
+    p->quoteIdentifier = quoteIdentifierSQLite;
 
     return p;
 }
