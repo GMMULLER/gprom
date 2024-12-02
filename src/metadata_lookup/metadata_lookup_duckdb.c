@@ -174,7 +174,7 @@ duckdbCatalogTableExists (char * tableName)
 
     char query[256];
     snprintf(query, sizeof(query),
-                "SELECT COUNT(*) FROM information_schema.tables WHERE table_name ILIKE '%s';", tableName); // ILIKE for case-insensitive LIKE
+                "SELECT COUNT(*) FROM information_schema.tables WHERE table_name='%s';", tableName);
 
     int rc;
     rc = duckdb_query(c, query, &result);
@@ -215,8 +215,8 @@ duckdbGetAttributes(char *tableName) {
 
     // Iterate over the result set
     for (idx_t row = 0; row < duckdb_row_count(&result); row++) {
-        const char *colName = duckdb_value_varchar(&result, row, 0);
-        const char *dt = duckdb_value_varchar(&result, row, 1);
+        const char *colName = duckdb_value_varchar(&result, 0, row);
+        const char *dt = duckdb_value_varchar(&result, 1, row);
         
         DataType ourDT = stringToDT((char *)dt);
 
@@ -539,10 +539,10 @@ Relation *duckdbExecuteQuery(char *query) {
     for (idx_t row = 0; row < duckdb_row_count(&rs); row++) {
         Vector *tuple = makeVector(VECTOR_STRING, -1);
         for (int j = 0; j < numFields; j++) {
-            if (duckdb_value_is_null(&rs, row, j)) {
+            if (duckdb_value_is_null(&rs, j, row)) {
                 vecAppendString(tuple, strdup("NULL"));
             } else {
-                const char *val = duckdb_value_varchar(&rs, row, j);
+                const char *val = duckdb_value_varchar(&rs, j, row);
                 vecAppendString(tuple, strdup((char *) val));
                 duckdb_free((void *)val); 
             }

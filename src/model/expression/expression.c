@@ -907,7 +907,7 @@ backendifyIdentifier(char *name)
 				result = strToUpper(name);
 				break;
             case BACKEND_DUCKDB: // TODO: check what case to use
-				result = strToUpper(name);
+				result = name;
 				break;
 		    case BACKEND_MSSQL:
 				result = strToLower(name);
