@@ -4,7 +4,7 @@
 #include "metadata_lookup/metadata_lookup.h"
 
 #ifdef HAVE_DUCKDB_BACKEND
-#include "duckdb/duckdb.h"
+#include "duckdb.h"
 #endif
 
 extern MetadataLookupPlugin *assembleDuckDBMetadataLookupPlugin (void);

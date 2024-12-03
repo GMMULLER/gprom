@@ -267,6 +267,40 @@ else
 	AC_MSG_RESULT([not set])
 fi
 ])
+# Duckdb header location
+AC_DEFUN([AC_DUCKDB_HEADER_LOCATION],
+[AC_ARG_WITH(duckdb-headers, [  --with-duckdb-headers], , )
+AC_MSG_CHECKING([for user provided duckdb header location])
+if test "x$with_duckdb_headers" != x; then
+	if test -f "$with_duckdb_headers/duckdb.h"; then
+    	CPPFLAGS="$CPPFLAGS -I$with_duckdb_headers"
+    	AC_MSG_RESULT([yes, found at $with_duckdb_headers])
+	else
+    	AC_MSG_RESULT([no])
+    	AC_MSG_WARN(no headers for DuckDB found in location $with_duckdb_headers)
+	fi
+else
+	AC_MSG_RESULT([not set])
+fi
+])
+# Duckdb library location
+AC_DEFUN([AC_DUCKDB_LOCATION],
+[AC_ARG_WITH(duckdb-lib, [  --with-duckdb-lib], , )
+AC_MSG_CHECKING([for user provided duckdb location])
+if test "x$with_duckdb_lib" != x; then
+	if test -d "$with_duckdb_lib"; then
+		LDFLAGS="$LDFLAGS -L$with_duckdb_lib"
+    	CPPFLAGS="$CPPFLAGS -I$with_duckdb_lib"
+    	AC_MSG_RESULT([yes, $with_duckdb_lib])
+	else
+    	AC_MSG_RESULT([no])
+    	AC_MSG_WARN(no duckdb library found in location $with_duckb_lib)
+	fi
+else
+	AC_MSG_RESULT([not set])
+fi
+])
+
 # All Postgres Checks
 AC_DEFUN([AC_POSTGRES_ALL_CHECKS],
 [
@@ -346,7 +380,15 @@ AC_DEFUN([AC_SQLITE_ALL_CHECKS],
 # All DuckDB Checks
 AC_DEFUN([AC_DUCKDB_ALL_CHECKS],
 [
-    AC_CHECK_LIB([duckdb],[duckdb_open],[],[
+  AC_DUCKDB_LOCATION
+  AC_DUCKDB_HEADER_LOCATION
+  AC_CHECK_HEADERS([duckdb.h],
+# nothing when found
+    [],
+# fail if not found
+    [AC_MSG_ERROR([Unable to find DuckDB duckdb.h])]
+  )
+  AC_CHECK_LIB([duckdb],[duckdb_open],[],[
     	AC_MSG_ERROR([missing libduckdb library - if you want to compile without DuckDB backend support use --disable-duckdb])
 	])
 ])
