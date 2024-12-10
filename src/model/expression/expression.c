@@ -906,7 +906,7 @@ backendifyIdentifier(char *name)
 		    case BACKEND_SQLITE: // treat everything as upper case since SQLite completely ignores all cases when it comes to matching attribute names even through internally identifiers are stored case sensitive
 				result = strToUpper(name);
 				break;
-            case BACKEND_DUCKDB: // TODO: check what case to use
+            case BACKEND_DUCKDB:
 				result = name;
 				break;
 		    case BACKEND_MSSQL:
